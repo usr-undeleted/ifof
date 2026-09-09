@@ -193,6 +193,9 @@ inline void panic(const cpu_t cpu, const char *err) {
 
 instruction decode(cpu_t *cpu);
 inline instruction decode(cpu_t *cpu) {
+	// increment program counter
+	++cpu->pc;
+
 	switch (cpu->ir & OPR) {
 		case 0x00: { return NOP; }
 		case 0x10: { return JCN; }
@@ -313,9 +316,10 @@ int main (void) {
 	};
 
 	memcpy(cpu.rom, rom, sizeof(rom));
-	cpu.rom[0x445] = 0xFF;
+	cpu.rom[0x444] = 0xFF;
 
 	// main loop
+	// one instruction cycle
 	while (1) {
 		// fetch for bus
 		cpu.bus = cpu.rom[cpu.pc];
@@ -344,9 +348,6 @@ int main (void) {
 		// execute
 		exec:
 		execute(&cpu, inst);
-
-		// increment program counter
-		++cpu.pc;
 	}
 
 	return 0;
