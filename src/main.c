@@ -31,8 +31,6 @@
 #define HALT_MSG "*** halting emulator! ***\n"
 // error start
 #define ERROR_MSG "\x1b[31merror\x1b[0m: "
-// unknown instruction decoded
-#define UNK_MSG ERROR_MSG "unknown instruction decoded\n"
 // execution received an unknown instruction
 #define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction\n"
 // dump message
@@ -151,6 +149,45 @@ instruction decode(const w2_t b8);
 inline instruction decode(const w2_t b8) {
 	switch (b8 & OPR) {
 		case 0x00: { return NOP; }
+		case 0x10: { return JCN; }
+
+		case 0x20: {
+			if (b8 & 0x1) return SRC;
+			else return FIM;
+		}
+
+		case 0x30: { return JIN; }
+		case 0x40: { return JUN; }
+		case 0x50: { return JMS; }
+		case 0x60: { return INC; }
+		case 0x70: { return ISZ; }
+		case 0x80: { return ADD; }
+		case 0x90: { return SUB; }
+		case 0xA0: { return LD;  }
+		case 0xB0: { return XCH; }
+		case 0xC0: { return BBL; }
+		case 0xD0: { return LDM; }
+
+		case 0xE0: {
+			switch (b8 & OPA) {
+				case 0x00: { return WRM; }
+				case 0x01: { return WMP; }
+				case 0x02: { return WRR; }
+				case 0x03: { return WPM; }
+				case 0x04: { return WR0; }
+				case 0x05: { return WR1; }
+				case 0x06: { return WR2; }
+				case 0x07: { return WR3; }
+				case 0x08: { return SBM; }
+				case 0x09: { return RDM; }
+				case 0x0A: { return RDR; }
+				case 0x0B: { return ADM; }
+				case 0x0C: { return RD0; }
+				case 0x0D: { return RD1; }
+				case 0x0E: { return RD2; }
+				case 0x0F: { return RD3; }
+			}
+		}
 
 		case 0xF0: {
 			switch (b8 & OPA) {
@@ -205,8 +242,6 @@ int main (void) {
 
 		// fetch + decode
 		inst = decode(cpu.rom[cpu.pc]);
-		// unknown instruction
-		if (inst == UNK) panic(cpu, UNK_MSG);
 
 		// execute
 		execute(cpu, inst);
