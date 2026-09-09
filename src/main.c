@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <limits.h>
+#include <string.h>
 #include <stdio.h>
 //#include <time.h>
 
@@ -33,6 +34,10 @@
 #define ERROR_MSG "\x1b[31merror\x1b[0m: "
 // execution received an unknown instruction
 #define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction"
+// unknown instruction decoded
+#define UNKNOWN_INST_MSG ERROR_MSG "unknown instruction decoded"
+
+// TODO; make these dump messages be flags
 // dump message
 #define CPU_DUMP_MSG \
 		"-!- cpu dump:\n" \
@@ -49,6 +54,7 @@
 
 // two words (8 bits)
 typedef uint8_t  w2_t;
+// four words (16 bits)
 typedef uint16_t w4_t;
 
 typedef enum {
@@ -115,11 +121,20 @@ typedef struct {
 
 	// accumulator
 	w2_t acm : 4;
-	// bus
-	w2_t bus : 4;
 
 	// program counter
 	w4_t pc : 12;
+
+	// toggles beetwen what kind of instruction
+	// to do (8 bit vs 16 bit)
+	w2_t flag : 1;
+	// carry for math stuff
+	w2_t carry : 1;
+
+	// data bus
+	w2_t bus;
+	// the instruction register
+	w2_t ir;
 
 	// add i/o registers here
 } cpu_t;
@@ -176,14 +191,14 @@ inline void panic(const cpu_t cpu, const char *err) {
 	exit(1);
 }
 
-instruction decode(const w2_t b8);
-inline instruction decode(const w2_t b8) {
-	switch (b8 & OPR) {
+instruction decode(cpu_t *cpu);
+inline instruction decode(cpu_t *cpu) {
+	switch (cpu->ir & OPR) {
 		case 0x00: { return NOP; }
 		case 0x10: { return JCN; }
 
 		case 0x20: {
-			if (b8 & 0x1) return SRC;
+			if (cpu->ir & 0x1) return SRC;
 			else return FIM;
 		}
 
@@ -200,7 +215,7 @@ inline instruction decode(const w2_t b8) {
 		case 0xD0: { return LDM; }
 
 		case 0xE0: {
-			switch (b8 & OPA) {
+			switch (cpu->ir & OPA) {
 				case 0x00: { return WRM; }
 				case 0x01: { return WMP; }
 				case 0x02: { return WRR; }
@@ -221,7 +236,7 @@ inline instruction decode(const w2_t b8) {
 		}
 
 		case 0xF0: {
-			switch (b8 & OPA) {
+			switch (cpu->ir & OPA) {
 				case 0x00: { return CLB; }
 				case 0x01: { return CLC; }
 				case 0x02: { return IAC; }
@@ -244,21 +259,39 @@ inline instruction decode(const w2_t b8) {
 }
 
 // get the right OP(R|A) of a byte
-#define OP_R_OR_A(b) ((b & 0x1) ? OPA : OPR)
+#define OP_R_OR_A(b) ((b & 0x1) ? OPR : OPA)
 
-void execute(cpu_t cpu, const instruction inst);
-inline void execute(cpu_t cpu, const instruction inst) {
-	(void)cpu;
-
+void execute(cpu_t *cpu, const instruction inst);
+inline void execute(cpu_t *cpu, const instruction inst) {
 	switch ((char)inst) {
 		case NOP: { break; }
 
 		case ADD: {
-			cpu.acm += cpu.r[cpu.bus] & OP_R_OR_A(cpu.bus);
+			cpu->acm += cpu->r[0];
 			break;
 		}
 
-		default: { panic(cpu, UNHANDLED_INST_MSG); }
+		case IAC: {
+			++cpu->acm;
+			break;
+		}
+
+		case DAC: {
+			--cpu->acm;
+			break;
+		}
+
+		case JUN: {
+			if (cpu->flag) break;
+
+			// only do things if we have all the data
+			cpu->pc = cpu->bus;
+			cpu->pc |= (cpu->ir & OPA) << 8;
+
+			break;
+		}
+
+		default: { panic(*cpu, UNHANDLED_INST_MSG); }
 	}
 }
 
@@ -271,24 +304,46 @@ int main (void) {
 	instruction inst;
 	// the cpu stuffies
 	cpu_t cpu = {0};
-	cpu.r[0] |= 0x01;
-	cpu.r[0] |= 0x20;
-	cpu.rom[0] = 0x80;
-	cpu.rom[1] = 0x81;
-	cpu.rom[2] = 0xFF;
+	cpu.r[0] = 0xFF;
+
+	// make rom (temporary)
+	w2_t rom[] = {
+		0x44,
+		0x44,
+	};
+
+	memcpy(cpu.rom, rom, sizeof(rom));
+	cpu.rom[0x445] = 0xFF;
 
 	// main loop
 	while (1) {
-		// fetch
-		//cpu.rom[++cpu.pc];
-		//use_opa = !use_opa;
+		// fetch for bus
+		cpu.bus = cpu.rom[cpu.pc];
+
+		// skip if flag is set
+		// will keep ir as normal
+		if (cpu.flag) {
+			cpu.flag = 0;
+			goto exec;
+		}
 
 		// fetch + decode
-		cpu.bus = cpu.rom[cpu.pc];
-		inst = decode(cpu.rom[cpu.pc]);
+		cpu.ir = cpu.rom[cpu.pc];
+		inst = decode(&cpu);
+
+		switch (inst) {
+			// set flip for 16 bit
+			case JCN: case FIM: case JUN: case JMS: case ISZ: {
+				cpu.flag = 1;
+				break;
+			}
+
+			default: break;
+		}
 
 		// execute
-		execute(cpu, inst);
+		exec:
+		execute(&cpu, inst);
 
 		// increment program counter
 		++cpu.pc;
