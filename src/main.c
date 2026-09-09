@@ -32,17 +32,20 @@
 // error start
 #define ERROR_MSG "\x1b[31merror\x1b[0m: "
 // execution received an unknown instruction
-#define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction\n"
+#define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction"
 // dump message
 #define CPU_DUMP_MSG \
 		"-!- cpu dump:\n" \
 		"\tprogram counter: %d\n" \
 		"\tROM byte at PC: 0x%X\n"\
+		"\taccumulator: 0x%X\n"\
 
 // message written before a hexadecimal dump of ram
 #define ROM_DUMP_MSG "-!- rom dump:\n"
 // message written before a hexadecimal dump of ram
 #define RAM_DUMP_MSG "-!- ram dump:\n"
+// message written before a register dump
+#define REG_DUMP_MSG "-!- register dump:\n"
 
 // two words (8 bits)
 typedef uint8_t  w2_t;
@@ -101,30 +104,19 @@ typedef enum {
 
 typedef struct {
 	// registers
-	w2_t  r0 : 4;
-	w2_t  r1 : 4;
-	w2_t  r2 : 4;
-	w2_t  r3 : 4;
-	w2_t  r4 : 4;
-	w2_t  r5 : 4;
-	w2_t  r6 : 4;
-	w2_t  r7 : 4;
-	w2_t  r8 : 4;
-	w2_t  r9 : 4;
-	w2_t r10 : 4;
-	w2_t r11 : 4;
-	w2_t r12 : 4;
-	w2_t r13 : 4;
-	w2_t r14 : 4;
-	w2_t r15 : 4;
-
-	// data bus
-	w2_t bus : 4;
+	// access the right 4 bits (word) with
+	// AND operator (OPR vs OPA)
+	w2_t r[8];
 
 	// rom memory
 	w2_t rom[ROM_SZ];
 	// memory
 	w2_t ram[RAM_SZ];
+
+	// accumulator
+	w2_t acm : 4;
+	// bus
+	w2_t bus : 4;
 
 	// program counter
 	w4_t pc : 12;
@@ -132,16 +124,55 @@ typedef struct {
 	// add i/o registers here
 } cpu_t;
 
+// print all registers
+void dump_regs(const cpu_t cpu);
+inline void dump_regs(const cpu_t cpu) {
+	fprintf(stderr,
+		"\tr0: 0x%X" "\t\t" "r8: 0x%X\n"
+		"\tr1: 0x%X" "\t\t" "r9: 0x%X\n"
+		"\tr2: 0x%X" "\t\t" "r10: 0x%X\n"
+		"\tr3: 0x%X" "\t\t" "r11: 0x%X\n"
+		"\tr4: 0x%X" "\t\t" "r12: 0x%X\n"
+		"\tr5: 0x%X" "\t\t" "r13: 0x%X\n"
+		"\tr6: 0x%X" "\t\t" "r14: 0x%X\n"
+		"\tr7: 0x%X" "\t\t" "r15: 0x%X\n"
+		,
+		cpu.r[0] & OPR,
+		cpu.r[7] & OPA,
+		cpu.r[0] & OPA,
+		cpu.r[7] & OPR,
+		cpu.r[1] & OPR,
+		cpu.r[6] & OPA,
+		cpu.r[1] & OPA,
+		cpu.r[6] & OPR,
+		cpu.r[2] & OPR,
+		cpu.r[5] & OPA,
+		cpu.r[2] & OPA,
+		cpu.r[5] & OPR,
+		cpu.r[3] & OPR,
+		cpu.r[4] & OPR,
+		cpu.r[3] & OPA,
+		cpu.r[4] & OPA
+	);
+}
+
 // error
 void panic(cpu_t cpu, const char *err);
 inline void panic(const cpu_t cpu, const char *err) {
-	fprintf(stderr, HALT_MSG
-		"%s"
-		CPU_DUMP_MSG
+	fprintf(stderr,
+		HALT_MSG
+		"%s" "\n\n"
+		CPU_DUMP_MSG "\n"
 		,
+		// error message
 		err,
 		// cpu dump
-		cpu.pc, cpu.rom[cpu.pc]);
+		cpu.pc, cpu.rom[cpu.pc], cpu.acm);
+
+	// print registers
+	fprintf(stderr,
+		REG_DUMP_MSG);
+	dump_regs(cpu);
 	exit(1);
 }
 
@@ -212,12 +243,20 @@ inline instruction decode(const w2_t b8) {
 	return UNK;
 }
 
+// get the right OP(R|A) of a byte
+#define OP_R_OR_A(b) ((b & 0x1) ? OPA : OPR)
+
 void execute(cpu_t cpu, const instruction inst);
 inline void execute(cpu_t cpu, const instruction inst) {
 	(void)cpu;
 
 	switch ((char)inst) {
 		case NOP: { break; }
+
+		case ADD: {
+			cpu.acm += cpu.r[cpu.bus] & OP_R_OR_A(cpu.bus);
+			break;
+		}
 
 		default: { panic(cpu, UNHANDLED_INST_MSG); }
 	}
@@ -232,7 +271,11 @@ int main (void) {
 	instruction inst;
 	// the cpu stuffies
 	cpu_t cpu = {0};
-	cpu.rom[0] = 0xF0;
+	cpu.r[0] |= 0x01;
+	cpu.r[0] |= 0x20;
+	cpu.rom[0] = 0x80;
+	cpu.rom[1] = 0x81;
+	cpu.rom[2] = 0xFF;
 
 	// main loop
 	while (1) {
@@ -241,6 +284,7 @@ int main (void) {
 		//use_opa = !use_opa;
 
 		// fetch + decode
+		cpu.bus = cpu.rom[cpu.pc];
 		inst = decode(cpu.rom[cpu.pc]);
 
 		// execute
