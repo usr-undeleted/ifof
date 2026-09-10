@@ -1,11 +1,12 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <limits.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdio.h>
+#include <wchar.h>
 //#include <time.h>
 
 // https://datasheets.chipdb.org/Intel/MCS-4/datashts/intel-4004.pdf
@@ -34,9 +35,7 @@
 // error start
 #define ERROR_MSG "\x1b[31merror\x1b[0m: "
 // execution received an unknown instruction
-#define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction"
-// unknown instruction decoded
-#define UNKNOWN_INST_MSG ERROR_MSG "unknown instruction decoded"
+#define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction\n"
 
 // TODO; make these dump messages be flags
 // dump message
@@ -178,22 +177,29 @@ inline void dump_regs(const cpu_t cpu) {
 }
 
 // error
-void panic(cpu_t cpu, const char *err);
-inline void panic(const cpu_t cpu, const char *err) {
-	fprintf(stderr,
-		HALT_MSG
-		"%s" "\n\n"
-		CPU_DUMP_MSG "\n"
-		,
-		// error message
-		err,
-		// cpu dump
-		cpu.pc, cpu.rom[cpu.pc], cpu.acm);
+// format is the error message
+void panic(const cpu_t cpu, const char *fmt, ...);
+inline void panic(const cpu_t cpu, const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
 
-	// print registers
+	// print the halt
+	fprintf(stderr, HALT_MSG);
+
+	// user picked
+	vfprintf(stderr, fmt, args);
+	putchar('\n');
+
+	// dumps
+	// cpu
+	fprintf(stderr, CPU_DUMP_MSG "\n", cpu.pc, cpu.rom[cpu.pc], cpu.acm);
+
+	// regs
 	fprintf(stderr,
 		REG_DUMP_MSG);
 	dump_regs(cpu);
+
+	va_end(args);
 	exit(1);
 }
 
@@ -303,7 +309,9 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case IAC: {
-			++cpu->acm;
+			uint8_t sum = cpu->acm + 1 + cpu->carry;
+			cpu->carry = (sum & 0xF0 ? 1 : 0);
+			cpu->acm = sum;
 			break;
 		}
 
@@ -349,6 +357,7 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		default: {
 			--cpu->pc;
 			panic(*cpu, UNHANDLED_INST_MSG);
+			break;
 		}
 	}
 }
@@ -366,6 +375,7 @@ int main (void) {
 		//0xDF, // LDM 0xE
 		0x80, // ADD 0x0
 		0x91, // SUB 0x1
+		0x61, // INC
 		//0x80, // ADD 0x0
 
 		// testing purposes
