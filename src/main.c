@@ -6,8 +6,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <wchar.h>
-//#include <time.h>
 
 // https://datasheets.chipdb.org/Intel/MCS-4/datashts/intel-4004.pdf
 
@@ -281,6 +279,17 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 	switch (inst) {
 		case NOP: { break; }
 
+		case JIN: {
+			uint8_t a = 0;
+			a |= cpu->r[((cpu->ir & OPA) >> 1) * 2].n << 4; // first item in pair
+			a |= cpu->r[((cpu->ir & OPA) >> 1) * 2 + 1].n;  // second item in pair
+
+			cpu->pc = 0;
+			cpu->pc |= a;
+
+			break;
+		}
+
 		case JUN: {
 			// only do things if we have all the data
 			if (cpu->flag) break;
@@ -294,29 +303,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 
 		case INC: {
 			++cpu->r[cpu->bus & OPA].n;
-			break;
-		}
-
-		case CLB: {
-			cpu->carry = 0;
-			cpu->acm   = 0;
-			break;
-		}
-
-		case CLC: {
-			cpu->carry = 0;
-			break;
-		}
-
-		case IAC: {
-			uint8_t sum = cpu->acm + 1 + cpu->carry;
-			cpu->carry = (sum & 0xF0 ? 1 : 0);
-			cpu->acm = sum;
-			break;
-		}
-
-		case DAC: {
-			--cpu->acm;
 			break;
 		}
 
@@ -354,6 +340,39 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case CLB: {
+			cpu->carry = 0;
+			cpu->acm   = 0;
+			break;
+		}
+
+		case CLC: {
+			cpu->carry = 0;
+			break;
+		}
+
+		case IAC: {
+			uint8_t sum = cpu->acm + 1 + cpu->carry;
+			cpu->carry = (sum & 0xF0 ? 1 : 0);
+			cpu->acm = sum;
+			break;
+		}
+
+		case CMC: {
+			cpu->carry = !cpu->carry;
+			break;
+		}
+
+		case DAC: {
+			--cpu->acm;
+			break;
+		}
+
+		case STC: {
+			cpu->carry = 1;
+			break;
+		}
+
 		default: {
 			--cpu->pc;
 			panic(*cpu, UNHANDLED_INST_MSG);
@@ -368,23 +387,20 @@ int main (void) {
 	// the cpu stuffies
 	cpu_t cpu = {0};
 
-	cpu.r[0].n = 0xF;
-	cpu.r[1].n = 0x1;
+	cpu.r[0].n = 0xE;
+	cpu.r[1].n = 0xE;
+
+	cpu.r[2].n = 0xF;
+	cpu.r[3].n = 0xF;
+
 	// make rom (temporary)
 	w2_t rom[] = {
-		//0xDF, // LDM 0xE
-		0x80, // ADD 0x0
-		0x91, // SUB 0x1
-		0x61, // INC
-		//0x80, // ADD 0x0
-
-		// testing purposes
-		0x4F, // JUN 0xFFF
-		0xFF, // ...
+		0x31 | (0x1 << 1), // JIN 1
 	};
 
 	memcpy(cpu.rom, rom, sizeof(rom));
-	cpu.rom[0xFFF] = 0xFF;
+	cpu.rom[0xEE] = 0xFF;
+	cpu.rom[0xFF] = 0xFF;
 
 	// main loop
 	// one instruction cycle
