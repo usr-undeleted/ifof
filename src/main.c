@@ -108,11 +108,16 @@ typedef enum {
 	RD3,
 } instruction;
 
+// a single word
+typedef struct {
+	uint8_t n : 4;
+} w1_t;
+
 typedef struct {
 	// registers
 	// access the right 4 bits (word) with
 	// AND operator (OPR vs OPA)
-	w2_t r[8];
+	w1_t r[16];
 
 	// rom memory
 	w2_t rom[ROM_SZ];
@@ -152,22 +157,22 @@ inline void dump_regs(const cpu_t cpu) {
 		"\tr6: 0x%X" "\t\t" "r14: 0x%X\n"
 		"\tr7: 0x%X" "\t\t" "r15: 0x%X\n"
 		,
-		cpu.r[0] & OPR,
-		cpu.r[7] & OPA,
-		cpu.r[0] & OPA,
-		cpu.r[7] & OPR,
-		cpu.r[1] & OPR,
-		cpu.r[6] & OPA,
-		cpu.r[1] & OPA,
-		cpu.r[6] & OPR,
-		cpu.r[2] & OPR,
-		cpu.r[5] & OPA,
-		cpu.r[2] & OPA,
-		cpu.r[5] & OPR,
-		cpu.r[3] & OPR,
-		cpu.r[4] & OPR,
-		cpu.r[3] & OPA,
-		cpu.r[4] & OPA
+		cpu.r[0].n,
+		cpu.r[8].n,
+		cpu.r[1].n,
+		cpu.r[9].n,
+		cpu.r[2].n,
+		cpu.r[10].n,
+		cpu.r[3].n,
+		cpu.r[11].n,
+		cpu.r[4].n,
+		cpu.r[12].n,
+		cpu.r[5].n,
+		cpu.r[13].n,
+		cpu.r[6].n,
+		cpu.r[14].n,
+		cpu.r[7].n,
+		cpu.r[15].n
 	);
 }
 
@@ -262,15 +267,26 @@ inline instruction decode(cpu_t *cpu) {
 }
 
 // get the right OP(R|A) of a byte
-#define OP_R_OR_A(b) ((b & 0x1) ? OPR : OPA)
+#define OP_R_OR_A(b) ((b & 0x1) ? OPA : OPR)
 
 void execute(cpu_t *cpu, const instruction inst);
 inline void execute(cpu_t *cpu, const instruction inst) {
-	switch ((char)inst) {
+	switch (inst) {
 		case NOP: { break; }
 
-		case ADD: {
-			cpu->acm += cpu->r[0];
+		case JUN: {
+			// only do things if we have all the data
+			if (cpu->flag) break;
+
+			cpu->pc = 0;
+			cpu->pc |= cpu->bus;
+			cpu->pc |= (cpu->ir & OPA) << 8;
+
+			break;
+		}
+
+		case INC: {
+			++cpu->r[cpu->bus & OPA].n;
 			break;
 		}
 
@@ -284,39 +300,51 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
-		case JUN: {
-			if (cpu->flag) break;
-
-			// only do things if we have all the data
-			cpu->pc = cpu->bus;
-			cpu->pc |= (cpu->ir & OPA) << 8;
-
+		case ADD: {
+			cpu->acm += cpu->r[cpu->bus & OPA].n;
 			break;
 		}
 
-		default: { panic(*cpu, UNHANDLED_INST_MSG); }
+		case LD: {
+			cpu->acm = cpu->r[cpu->bus & OPA].n;
+			break;
+		}
+
+		case LDM: {
+			cpu->acm = cpu->bus & OPA;
+			break;
+		}
+
+		default: {
+			--cpu->pc;
+			panic(*cpu, UNHANDLED_INST_MSG);
+		}
 	}
 }
 
 int main (void) {
-	// wether to (try) to wait the accurate 10.8 microsecond cycle rate
-	bool accurate_timer = false;
-	if (accurate_timer) goto simulated_time;
-
 	// what instruction to run
 	instruction inst;
 	// the cpu stuffies
 	cpu_t cpu = {0};
-	cpu.r[0] = 0xFF;
 
 	// make rom (temporary)
 	w2_t rom[] = {
-		0x44,
-		0x44,
+		0x61, // INC 0x01
+		0x61, // INC 0x01
+		0x61, // INC 0x01
+		0x61, // INC 0x01
+		0x61, // INC 0x01
+		0x61, // INC 0x01
+
+		0xA1, // LD 0x01
+
+		0x49, // JUN 0x999
+		0x99,
 	};
 
 	memcpy(cpu.rom, rom, sizeof(rom));
-	cpu.rom[0x444] = 0xFF;
+	cpu.rom[0x999] = 0xFF;
 
 	// main loop
 	// one instruction cycle
@@ -325,7 +353,7 @@ int main (void) {
 		cpu.bus = cpu.rom[cpu.pc];
 
 		// skip if flag is set
-		// will keep ir as normal
+		// will keep ir as prev
 		if (cpu.flag) {
 			cpu.flag = 0;
 			goto exec;
@@ -349,22 +377,6 @@ int main (void) {
 		exec:
 		execute(&cpu, inst);
 	}
-
-	return 0;
-
-	// loop used if accurate timer
-	// not implemented yet
-	simulated_time:
-	/*
-	const struct timespec wait = {
-		.tv_nsec = CYCLE_WAIT,
-	};
-
-	while (1) {
-
-		nanosleep(&wait, NULL);
-	}
-	*/
 
 	return 0;
 }
