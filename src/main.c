@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <limits.h>
 #include <string.h>
@@ -290,6 +291,17 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case CLB: {
+			cpu->carry = 0;
+			cpu->acm   = 0;
+			break;
+		}
+
+		case CLC: {
+			cpu->carry = 0;
+			break;
+		}
+
 		case IAC: {
 			++cpu->acm;
 			break;
@@ -301,12 +313,31 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case ADD: {
-			cpu->acm += cpu->r[cpu->bus & OPA].n;
+			uint8_t sum = cpu->acm + cpu->r[cpu->bus & OPA].n + cpu->carry;
+			cpu->carry = (sum & 0xF0 ? 1 : 0);
+			cpu->acm = sum;
+			break;
+		}
+
+		case SUB: {
+			uint8_t sub = cpu->acm - (cpu->r[cpu->bus & OPA].n + cpu->carry);
+			cpu->carry = (sub > cpu->acm ? 0 : 1);
+			cpu->acm = sub;
 			break;
 		}
 
 		case LD: {
 			cpu->acm = cpu->r[cpu->bus & OPA].n;
+			break;
+		}
+
+		case XCH: {
+			w1_t temp = {
+				.n = cpu->acm,
+			};
+
+			cpu->acm = cpu->r[cpu->bus & OPA].n;
+			cpu->r[cpu->bus & OPA].n = temp.n;
 			break;
 		}
 
@@ -328,23 +359,22 @@ int main (void) {
 	// the cpu stuffies
 	cpu_t cpu = {0};
 
+	cpu.r[0].n = 0xF;
+	cpu.r[1].n = 0x1;
 	// make rom (temporary)
 	w2_t rom[] = {
-		0x61, // INC 0x01
-		0x61, // INC 0x01
-		0x61, // INC 0x01
-		0x61, // INC 0x01
-		0x61, // INC 0x01
-		0x61, // INC 0x01
+		//0xDF, // LDM 0xE
+		0x80, // ADD 0x0
+		0x91, // SUB 0x1
+		//0x80, // ADD 0x0
 
-		0xA1, // LD 0x01
-
-		0x49, // JUN 0x999
-		0x99,
+		// testing purposes
+		0x4F, // JUN 0xFFF
+		0xFF, // ...
 	};
 
 	memcpy(cpu.rom, rom, sizeof(rom));
-	cpu.rom[0x999] = 0xFF;
+	cpu.rom[0xFFF] = 0xFF;
 
 	// main loop
 	// one instruction cycle
