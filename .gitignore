@@ -56,3 +56,6 @@ dkms.conf
 
 # binaries
 bin/
+
+# ignored
+ignored/

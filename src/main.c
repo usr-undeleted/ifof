@@ -1,9 +1,14 @@
+#include <sys/stat.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <libgen.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 
 // https://datasheets.chipdb.org/Intel/MCS-4/datashts/intel-4004.pdf
@@ -484,18 +489,56 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 	}
 }
 
-int main (void) {
+int main (int argc, char *argv[]) {
 	// what instruction to run
 	instruction inst;
 	// the cpu stuffies
 	cpu_t cpu = {0};
 	cpu.flag = 0;
 
-	cpu.rom[0x0] = 0x4E;
-	cpu.rom[0x1] = 0xFF;
+	if (argc < 2) {
+		fprintf(stderr, "%s: too little arguments! please, specify a ROM :p\n",
+			basename(argv[0]));
+		return 1;
+	}
 
-	cpu.rom[0x5] = 0xFF;
-	cpu.rom[0xEFF] = 0xFE;
+	if (argc > 2) {
+		fprintf(stderr, "%s: only specify one ROM!\n", basename(argv[0]));
+		return 1;
+	}
+
+	// open the file
+	struct stat st;
+	if (stat(argv[1], &st) != 0) {
+		fprintf(stderr, "%s: failed to stat file \"%s\": %s\n",
+			basename(argv[0]), argv[1], strerror(errno));
+		return 1;
+	};
+
+	// check size
+	if ((size_t)st.st_size > sizeof(cpu.rom)) {
+		fprintf(stderr, "%s: file \"%s\" is too large (%ld bytes) - maximum is %ld bytes :p\n",
+			basename(argv[0]), argv[1], st.st_size, sizeof(cpu.rom));
+		return 1;
+	}
+
+	int fd = -1;
+	if ((fd = open(argv[1], O_RDONLY)) < 0) {
+		fprintf(stderr, "%s: failed to open file \"%s\": %s\n",
+			basename(argv[0]), argv[1], strerror(errno));
+		return 1;
+	}
+
+	ssize_t r = 0;
+	fprintf(stderr, "%s: reading ROM \"%s\"...\n", basename(argv[0]), argv[1]);
+	while ((r = read(fd, cpu.rom, sizeof(cpu.rom)))) {
+		if (r == -1) {
+			fprintf(stderr, "%s: failed to read file \"%s\": %s\n",
+				basename(argv[0]), argv[1], strerror(errno));
+			return 1;
+		}
+	}
+
 	// main loop
 	// one instruction cycle
 	while (1) {
