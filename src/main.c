@@ -121,6 +121,11 @@ typedef struct {
 	uint16_t n : 12;
 } w3_t;
 
+// access the pc (assuming local variable)
+#define PC(cpu) cpu.stack[cpu.sp].n
+// access the pc (assuming pointer)
+#define PC_P(cpu) cpu->stack[cpu->sp].n
+
 typedef struct {
 	// registers
 	// access the right 4 bits (word) with
@@ -135,9 +140,6 @@ typedef struct {
 	// accumulator
 	w2_t acm : 4;
 
-	// program counter
-	w4_t pc : 12;
-
 	// toggles beetwen what kind of instruction
 	// to do (8 bit vs 16 bit)
 	w2_t flag : 1;
@@ -148,6 +150,11 @@ typedef struct {
 	w2_t bus;
 	// the instruction register
 	w2_t ir;
+
+	// the stack
+	w3_t stack[4];
+	// stack pointer
+	w2_t sp : 2;
 
 	// add i/o registers here
 } cpu_t;
@@ -165,7 +172,7 @@ inline void dump_regs(const cpu_t cpu) {
 		"\tr6: 0x%X" "\t\t" "r14: 0x%X\n"
 		"\tr7: 0x%X" "\t\t" "r15: 0x%X\n"
 		,
-		cpu.r[0].n,
+		cpu.r[0].n, // p/x (cpu->ir & 0x0F) | ((cpu->ir & 0x0F) << 8)
 		cpu.r[8].n,
 		cpu.r[1].n,
 		cpu.r[9].n,
@@ -201,8 +208,8 @@ inline void panic(const cpu_t cpu, const char *fmt, ...) {
 	// dumps
 	// cpu
 	fprintf(stderr, CPU_DUMP_MSG "\n",
-		cpu.pc, cpu.pc, cpu.pc,
-		cpu.rom[cpu.pc], cpu.rom[cpu.pc], cpu.rom[cpu.pc],
+		PC(cpu), PC(cpu), PC(cpu),
+		cpu.rom[PC(cpu)], cpu.rom[PC(cpu)], cpu.rom[PC(cpu)],
 		cpu.acm, cpu.acm, cpu.acm);
 
 	// regs
@@ -217,7 +224,7 @@ inline void panic(const cpu_t cpu, const char *fmt, ...) {
 instruction decode(cpu_t *cpu);
 inline instruction decode(cpu_t *cpu) {
 	// increment program counter
-	++cpu->pc;
+	++PC_P(cpu);
 
 	switch (cpu->ir & OPR) {
 		case 0x00: { return NOP; }
@@ -285,7 +292,7 @@ inline instruction decode(cpu_t *cpu) {
 		}
 	};
 
-	--cpu->pc;
+	--PC_P(cpu);
 	panic(*cpu, UNK_INST_MSG);
 	return UNK;
 }
@@ -303,8 +310,8 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 
 			// only alters the right-most 8 bits
 			if (cpu->ir & OPA) {
-				cpu->pc &= 0xF00;
-				cpu->pc |= cpu->bus;
+				PC_P(cpu) &= 0xF00;
+				PC_P(cpu) |= cpu->bus;
 			};
 			break;
 		}
@@ -323,7 +330,7 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		case FIN: {
 			// make address
 			const w3_t a = {
-				.n = (cpu->pc & 0xF00) | (cpu->r[0].n << 4) | cpu->r[1].n,
+				.n = (PC_P(cpu) & 0xF00) | (cpu->r[0].n << 4) | cpu->r[1].n,
 			};
 
 			// set pair
@@ -341,8 +348,8 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			a |= cpu->r[i].n << 4; // first item in pair
 			a |= cpu->r[i + 1].n;  // second item in pair
 
-			cpu->pc &= 0xF00;
-			cpu->pc |= a;
+			PC_P(cpu) &= 0xF00;
+			PC_P(cpu) |= a;
 
 			break;
 		}
@@ -351,9 +358,23 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			// only do things if we have all the data
 			if (cpu->flag) break;
 
-			cpu->pc = 0;
-			cpu->pc |= cpu->ir;
-			cpu->pc |= (cpu->ir & OPA) << 8;
+			PC_P(cpu) = 0;
+			PC_P(cpu) |= cpu->bus;
+			PC_P(cpu) |= (cpu->ir & OPA) << 8;
+
+			break;
+		}
+
+		case JMS: {
+			if (cpu->flag) break;
+
+			w3_t a = {
+				.n = (cpu->ir & OPA << 8) | cpu->bus,
+			};
+
+			++PC_P(cpu); // position after JMS saved
+			++cpu->sp;
+			PC_P(cpu) = a.n; // set the address
 
 			break;
 		}
@@ -367,8 +388,8 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			if (cpu->flag) break;
 
 			if (++cpu->r[cpu->ir & OPA].n) {
-				cpu->pc &= 0xF00;
-				cpu->pc |= cpu->bus;
+				PC_P(cpu) &= 0xF00;
+				PC_P(cpu) |= cpu->bus;
 			}
 
 			break;
@@ -400,6 +421,12 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 
 			cpu->acm = cpu->r[cpu->bus & OPA].n;
 			cpu->r[cpu->bus & OPA].n = temp.n;
+			break;
+		}
+
+		case BBL: {
+			--cpu->sp;
+			cpu->acm = (cpu->bus & OPA);
 			break;
 		}
 
@@ -482,7 +509,7 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		default: {
-			--cpu->pc;
+			--PC_P(cpu);
 			panic(*cpu, UNHANDLED_INST_MSG);
 			break;
 		}
@@ -543,7 +570,7 @@ int main (int argc, char *argv[]) {
 	// one instruction cycle
 	while (1) {
 		// fetch for bus
-		cpu.bus = cpu.rom[cpu.pc];
+		cpu.bus = cpu.rom[PC(cpu)];
 
 		// skip if flag is set
 		// will keep ir as prev
@@ -553,7 +580,7 @@ int main (int argc, char *argv[]) {
 		}
 
 		// fetch + decode
-		cpu.ir = cpu.rom[cpu.pc];
+		cpu.ir = cpu.rom[PC(cpu)];
 		inst = decode(&cpu);
 
 		switch (inst) {
