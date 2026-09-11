@@ -112,6 +112,11 @@ typedef struct {
 	uint8_t n : 4;
 } w1_t;
 
+// three words
+typedef struct {
+	uint16_t n : 12;
+} w3_t;
+
 typedef struct {
 	// registers
 	// access the right 4 bits (word) with
@@ -219,7 +224,11 @@ inline instruction decode(cpu_t *cpu) {
 			else return FIM;
 		}
 
-		case 0x30: { return JIN; }
+		case 0x30: {
+			if (cpu->ir & 0x1) return JIN;
+			else return FIN;
+		}
+
 		case 0x40: { return JUN; }
 		case 0x50: { return JMS; }
 		case 0x60: { return INC; }
@@ -289,15 +298,44 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			if (cpu->flag) break;
 
 			// only alters the right-most 8 bits
-			if (cpu->ir & OPA) cpu->pc |= cpu->bus;
+			if (cpu->ir & OPA) {
+				cpu->pc &= 0xF00;
+				cpu->pc |= cpu->bus;
+			};
+			break;
+		}
+
+		case FIM: {
+			if (cpu->flag) break;
+
+			// set pair
+			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
+			cpu->r[i].n =     (cpu->bus & OPR) >> 4;
+			cpu->r[i + 1].n = (cpu->bus & OPA);
+
+			break;
+		}
+
+		case FIN: {
+			// make address
+			const w3_t a = {
+				.n = (cpu->pc & 0xF00) | (cpu->r[0].n << 4) | cpu->r[1].n,
+			};
+
+			// set pair
+			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
+			cpu->r[i].n =     cpu->rom[a.n] >> 4;
+			cpu->r[i + 1].n = cpu->rom[a.n];
+
 			break;
 		}
 
 		case JIN: {
 			// get contents of register pair
-			uint8_t a = 0;
-			a |= cpu->r[((cpu->ir & OPA) >> 1) * 2].n << 4; // first item in pair
-			a |= cpu->r[((cpu->ir & OPA) >> 1) * 2 + 1].n;  // second item in pair
+			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
+			w2_t a = 0;
+			a |= cpu->r[i].n << 4; // first item in pair
+			a |= cpu->r[i + 1].n;  // second item in pair
 
 			cpu->pc &= 0xF00;
 			cpu->pc |= a;
@@ -322,14 +360,14 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case ADD: {
-			uint8_t sum = cpu->acm + cpu->r[cpu->bus & OPA].n + cpu->carry;
+			w2_t sum = cpu->acm + cpu->r[cpu->bus & OPA].n + cpu->carry;
 			cpu->carry = (sum & 0xF0 ? 1 : 0);
 			cpu->acm = sum;
 			break;
 		}
 
 		case SUB: {
-			uint8_t sub = cpu->acm - (cpu->r[cpu->bus & OPA].n + cpu->carry);
+			w2_t sub = cpu->acm - (cpu->r[cpu->bus & OPA].n + cpu->carry);
 			cpu->carry = (sub > cpu->acm ? 0 : 1);
 			cpu->acm = sub;
 			break;
@@ -384,11 +422,18 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case RAL: {
-			cpu->acm = (cpu->acm << 1) | (cpu->acm >> 3);
+			w2_t n = (cpu->acm << 1) | cpu->carry; // shift and carry
+			cpu->carry = (n & OPR) >> 4;           // the carry is the bit shifted outwards
+			cpu->acm = n;
+
 			break;
 		}
 
 		case RAR: {
+			w2_t n = (cpu->acm << 3) | (cpu->carry << 7);
+			cpu->carry = (n & OPA) >> 4;
+			cpu->acm = n >> 4;
+
 			break;
 		}
 
@@ -415,13 +460,17 @@ int main (void) {
 	instruction inst;
 	// the cpu stuffies
 	cpu_t cpu = {0};
+	cpu.flag = 0;
 
 	// testing purposes
-	cpu.rom[0x0]   = 0b01001111;
-	cpu.rom[0x1]   = 0b11111110;
+	cpu.r[0].n = 0xE;
+	cpu.r[1].n = 0xE;
 
-	cpu.rom[0xFFF] = 0xFF; // UNK
+	cpu.rom[0x0] = 0b00110010;
 
+	cpu.rom[0xEE] = 0xAA;
+	cpu.rom[0xFF]  = 0xFF; // UNK
+	cpu.carry = 1;
 	// main loop
 	// one instruction cycle
 	while (1) {
