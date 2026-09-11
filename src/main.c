@@ -57,8 +57,7 @@ typedef uint8_t  w2_t;
 typedef uint16_t w4_t;
 
 typedef enum {
-	// unknown inst
-	UNK = -1,
+	UNK = -1, // unknown inst
 	NOP =  0,
 	JCN,
 	FIM,
@@ -359,6 +358,17 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case ISZ: {
+			if (cpu->flag) break;
+
+			if (++cpu->r[cpu->ir & OPA].n) {
+				cpu->pc &= 0xF00;
+				cpu->pc |= cpu->bus;
+			}
+
+			break;
+		}
+
 		case ADD: {
 			w2_t sum = cpu->acm + cpu->r[cpu->bus & OPA].n + cpu->carry;
 			cpu->carry = (sum & 0xF0 ? 1 : 0);
@@ -437,6 +447,13 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case TCC: {
+			cpu->acm &= 0xFE;
+			cpu->acm |= cpu->carry;
+			cpu->carry = 0;
+			break;
+		}
+
 		case DAC: {
 			--cpu->acm;
 			break;
@@ -462,15 +479,11 @@ int main (void) {
 	cpu_t cpu = {0};
 	cpu.flag = 0;
 
-	// testing purposes
-	cpu.r[0].n = 0xE;
-	cpu.r[1].n = 0xE;
+	cpu.rom[0x0] = 0b11011010;
+	cpu.rom[0x1] = 0xFA;
+	cpu.rom[0x2] = 0b11110111;
 
-	cpu.rom[0x0] = 0b00110010;
-
-	cpu.rom[0xEE] = 0xAA;
-	cpu.rom[0xFF]  = 0xFF; // UNK
-	cpu.carry = 1;
+	cpu.rom[0xFF] = 0xFE; // UNK
 	// main loop
 	// one instruction cycle
 	while (1) {
