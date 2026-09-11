@@ -40,9 +40,9 @@
 // dump message
 #define CPU_DUMP_MSG \
 		"-!- cpu dump (dec ; hexa ; bin):\n" \
-		"\tprogram counter: %d ; 0x%012X ; %b\n" \
+		"\tprogram counter: %d ; 0x%X ; %b\n" \
 		"\tROM byte at PC: %d ; 0x%02X ; %b\n"\
-		"\taccumulator: %d ; 0x%01X ; %b\n"\
+		"\taccumulator: %d ; 0x%X ; %04b\n"\
 
 // message written before a hexadecimal dump of ram
 #define ROM_DUMP_MSG "-!- rom dump:\n"
@@ -464,6 +464,11 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case KBP: {
+			if (cpu->acm & (cpu->acm - 1)) cpu->acm = 0xF;
+			break;
+		}
+
 		default: {
 			--cpu->pc;
 			panic(*cpu, UNHANDLED_INST_MSG);
@@ -479,9 +484,8 @@ int main (void) {
 	cpu_t cpu = {0};
 	cpu.flag = 0;
 
-	cpu.rom[0x0] = 0b11011010;
-	cpu.rom[0x1] = 0xFA;
-	cpu.rom[0x2] = 0b11110111;
+	cpu.rom[0x0] = 0b11010010;
+	cpu.rom[0x1] = 0b11111100;
 
 	cpu.rom[0xFF] = 0xFE; // UNK
 	// main loop
