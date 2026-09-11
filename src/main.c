@@ -448,7 +448,7 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case TCC: {
-			cpu->acm &= 0xFE;
+			cpu->acm = 0;
 			cpu->acm |= cpu->carry;
 			cpu->carry = 0;
 			break;
@@ -456,6 +456,13 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 
 		case DAC: {
 			--cpu->acm;
+			break;
+		}
+
+		case TCS: {
+			if (cpu->carry) cpu->acm = 10;
+			else cpu->acm = 9;
+			cpu->carry = 0;
 			break;
 		}
 
@@ -484,10 +491,11 @@ int main (void) {
 	cpu_t cpu = {0};
 	cpu.flag = 0;
 
-	cpu.rom[0x0] = 0b11010010;
-	cpu.rom[0x1] = 0b11111100;
+	cpu.rom[0x0] = 0x4E;
+	cpu.rom[0x1] = 0xFF;
 
-	cpu.rom[0xFF] = 0xFE; // UNK
+	cpu.rom[0x5] = 0xFF;
+	cpu.rom[0xEFF] = 0xFE;
 	// main loop
 	// one instruction cycle
 	while (1) {
