@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <limits.h>
-#include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -34,14 +33,16 @@
 #define ERROR_MSG "\x1b[31merror\x1b[0m: "
 // execution received an unknown instruction
 #define UNHANDLED_INST_MSG ERROR_MSG "execution received an unhandled instruction\n"
+// decoding got an unknown instruction
+#define UNK_INST_MSG ERROR_MSG "decoding received an unknown instruction\n"
 
 // TODO; make these dump messages be flags
 // dump message
 #define CPU_DUMP_MSG \
-		"-!- cpu dump:\n" \
-		"\tprogram counter: %d\n" \
-		"\tROM byte at PC: 0x%X\n"\
-		"\taccumulator: 0x%X\n"\
+		"-!- cpu dump (dec ; hexa ; bin):\n" \
+		"\tprogram counter: %d ; 0x%012X ; %b\n" \
+		"\tROM byte at PC: %d ; 0x%02X ; %b\n"\
+		"\taccumulator: %d ; 0x%01X ; %b\n"\
 
 // message written before a hexadecimal dump of ram
 #define ROM_DUMP_MSG "-!- rom dump:\n"
@@ -146,8 +147,8 @@ typedef struct {
 void dump_regs(const cpu_t cpu);
 inline void dump_regs(const cpu_t cpu) {
 	fprintf(stderr,
-		"\tr0: 0x%X" "\t\t" "r8: 0x%X\n"
-		"\tr1: 0x%X" "\t\t" "r9: 0x%X\n"
+		"\tr0: 0x%X" "\t\t" "r8:  0x%X\n"
+		"\tr1: 0x%X" "\t\t" "r9:  0x%X\n"
 		"\tr2: 0x%X" "\t\t" "r10: 0x%X\n"
 		"\tr3: 0x%X" "\t\t" "r11: 0x%X\n"
 		"\tr4: 0x%X" "\t\t" "r12: 0x%X\n"
@@ -190,7 +191,10 @@ inline void panic(const cpu_t cpu, const char *fmt, ...) {
 
 	// dumps
 	// cpu
-	fprintf(stderr, CPU_DUMP_MSG "\n", cpu.pc, cpu.rom[cpu.pc], cpu.acm);
+	fprintf(stderr, CPU_DUMP_MSG "\n",
+		cpu.pc, cpu.pc, cpu.pc,
+		cpu.rom[cpu.pc], cpu.rom[cpu.pc], cpu.rom[cpu.pc],
+		cpu.acm, cpu.acm, cpu.acm);
 
 	// regs
 	fprintf(stderr,
@@ -268,6 +272,8 @@ inline instruction decode(cpu_t *cpu) {
 		}
 	};
 
+	--cpu->pc;
+	panic(*cpu, UNK_INST_MSG);
 	return UNK;
 }
 
@@ -279,12 +285,21 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 	switch (inst) {
 		case NOP: { break; }
 
+		case JCN: {
+			if (cpu->flag) break;
+
+			// only alters the right-most 8 bits
+			if (cpu->ir & OPA) cpu->pc |= cpu->bus;
+			break;
+		}
+
 		case JIN: {
+			// get contents of register pair
 			uint8_t a = 0;
 			a |= cpu->r[((cpu->ir & OPA) >> 1) * 2].n << 4; // first item in pair
 			a |= cpu->r[((cpu->ir & OPA) >> 1) * 2 + 1].n;  // second item in pair
 
-			cpu->pc = 0;
+			cpu->pc &= 0xF00;
 			cpu->pc |= a;
 
 			break;
@@ -295,7 +310,7 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			if (cpu->flag) break;
 
 			cpu->pc = 0;
-			cpu->pc |= cpu->bus;
+			cpu->pc |= cpu->ir;
 			cpu->pc |= (cpu->ir & OPA) << 8;
 
 			break;
@@ -359,7 +374,21 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case CMC: {
-			cpu->carry = !cpu->carry;
+			cpu->carry = ~cpu->carry;
+			break;
+		}
+
+		case CMA: {
+			cpu->acm = ~cpu->acm;
+			break;
+		}
+
+		case RAL: {
+			cpu->acm = (cpu->acm << 1) | (cpu->acm >> 3);
+			break;
+		}
+
+		case RAR: {
 			break;
 		}
 
@@ -387,20 +416,11 @@ int main (void) {
 	// the cpu stuffies
 	cpu_t cpu = {0};
 
-	cpu.r[0].n = 0xE;
-	cpu.r[1].n = 0xE;
+	// testing purposes
+	cpu.rom[0x0]   = 0b01001111;
+	cpu.rom[0x1]   = 0b11111110;
 
-	cpu.r[2].n = 0xF;
-	cpu.r[3].n = 0xF;
-
-	// make rom (temporary)
-	w2_t rom[] = {
-		0x31 | (0x1 << 1), // JIN 1
-	};
-
-	memcpy(cpu.rom, rom, sizeof(rom));
-	cpu.rom[0xEE] = 0xFF;
-	cpu.rom[0xFF] = 0xFF;
+	cpu.rom[0xFFF] = 0xFF; // UNK
 
 	// main loop
 	// one instruction cycle

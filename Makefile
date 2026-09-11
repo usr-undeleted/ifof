@@ -2,7 +2,7 @@ CC             ="clang"
 BIN_OUTPUT     ="$(pwd)bin/"
 BIN_NAME       ="ifof"
 SRC            ="$(pwd)src"
-CC_FLAGS       ="-Wextra" "-Wall" "-std=gnu11" "-Isrc/"
+CC_FLAGS       ="-Wextra" "-Wall" "-std=gnu23" "-Isrc/"
 DEBUGGER       =""
 INVOC_ARGS     =""
 
