@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -11,6 +10,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #include "emulator.h"
 
@@ -47,46 +47,38 @@ static inline void dump_regs(const cpu_t cpu) {
 	);
 }
 
-// regular hex dump (with tabs at start)
-static inline void hex_dump(const char *arr, const size_t sz, const size_t w) {
-	char chs[w];
+// hex dump for cpu ram (with tabs at start)
+// width means the width in 4 bit words, not bytes
+static inline void hex_dump(cpu_t cpu, const size_t w) {
+	w1_t chs[w];
 	memset(chs, '\0', sizeof(chs));
-	uint8_t cnt = 0;
 
-	for (size_t i = 0; i < sz; i++) {
-		chs[i % w] = arr[i];
+	for (uint16_t i = 0; i <= 0xFF; i++) {
+		chs[i % w].n = RAM(cpu);
+		cpu.ram_r = i & 0xFF;
 
 		if (!(i & (w - 1))) {
-			fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
-			cnt = w;
+			fprintf(stderr, "%c\t[%04X]\t", i ? '\n' : '\0', i / 2);
 		}
-		fprintf(stderr, "%02X ", arr[i] & 0xFF);
+
+		fprintf(stderr, "%01X%c", RAM(cpu), i & 0x1 ? ' ' : '\0');
 
 		// print the chars
-		if (!((i & (w - 1)) % (w - 1)) && i & (w - 1)) {
-			fputc(' ', stderr);
-			fputc('[', stderr);
+		if ((i & (w - 1)) == w - 1) {
+			fprintf(stderr, " [");
 
-			for (uint8_t j = 0; j < sizeof(chs); j++) {
-				fputc(isprint(chs[j]) ? chs[j] : '.', stderr);
+			for (uint8_t j = 0; j < sizeof(chs) / 2; j++) {
+				char ch = 0;
+				ch |= chs[j].n;
+				ch |= chs[j + 1].n << 4;
+
+				fputc(isprint(ch) ? ch : '.', stderr);
 			}
 			memset(chs, '\0', sizeof(chs));
 
 			fputc(']', stderr);
 		}
 
-		--cnt;
-	}
-
-	if (cnt) {
-		for (uint8_t i = 0; i < cnt; i++) write(STDERR_FILENO, "    ", 4);
-		fputc('[', stderr);
-
-		for (uint8_t j = 0; j < sizeof(chs) - cnt; j++) {
-			fputc(isprint(chs[j]) ? chs[j] : '.', stderr);
-		}
-
-		fputc(']', stderr);
 	}
 
 	fputc('\n', stderr);
@@ -94,7 +86,7 @@ static inline void hex_dump(const char *arr, const size_t sz, const size_t w) {
 
 // error
 // format is the error message
-static inline void panic(const cpu_t cpu, const char *fmt, ...) {
+static inline void panic(cpu_t cpu, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 
@@ -124,7 +116,10 @@ static inline void panic(const cpu_t cpu, const char *fmt, ...) {
 	fprintf(stderr, RAM_DUMP_MSG);
 	for (int b = 0; b < 4; b++) {
 		fprintf(stderr, "\t> bank %d:\n", b);
-		hex_dump((char *)cpu.ram[b].m, sizeof(cpu.ram[b].m), 8);
+
+		cpu.ram_b = b;
+		hex_dump(cpu, 16);
+
 		if (b < 3) fputc('\n', stderr);
 	}
 
@@ -463,9 +458,11 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case WRM: {
-			cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] &= (cpu->ram_r & 0x1 ? 0xF0 : 0x0F);
-			cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] |=
-				cpu->acm << (cpu->ram_r & 0x1 ? 0 : 4);
+			//cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] &= (cpu->ram_r & 0x1 ? 0xF0 : 0x0F);
+			//cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] |=
+			//	cpu->acm << (cpu->ram_r & 0x1 ? 0 : 4);
+
+			RAM_P(cpu) = cpu->acm;
 			break;
 		}
 
@@ -485,8 +482,14 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case WR0: {
+			cpu->s_ram[cpu->ram_b].m[0].n = cpu->acm;
+
+			break;
+		}
+
 		case RDM: {
-			cpu->acm = cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] >> (cpu->ram_r & 0x1 ? 0 : 4);
+			cpu->acm = RAM_P(cpu);
 			break;
 		}
 

@@ -115,15 +115,48 @@ typedef struct {
 	w4_t n : 12;
 } w3_t;
 
+// ram armageddon below
+
+// a register (holds the final 16 words)
+typedef struct {
+	w1_t ch[16];
+} ram_reg_t;
+
+// a chip
+typedef struct {
+	ram_reg_t r[4];
+} ram_chip_t;
+
 // a ram bank
 typedef struct {
-	w2_t m[RAM_SZ];
+	//w2_t m[RAM_SZ];
+	ram_chip_t c[4];
 } ram_bank_t;
+
+// status char memory
+typedef struct {
+	w1_t m[4];
+} s_ram_t;
 
 // access the pc (assuming local variable)
 #define PC(cpu) cpu.stack[cpu.sp].n
 // access the pc (assuming pointer)
 #define PC_P(cpu) cpu->stack[cpu->sp].n
+
+// access ram char
+// bank -> chip -> register -> character
+#define RAM(cpu) \
+	cpu.ram[cpu.ram_b]      \
+	.c[(cpu.ram_r & 0xC0) >> 6]\
+	.r[(cpu.ram_r & 0x30) >> 4]\
+	.ch[cpu.ram_r & 0x0F].n
+
+// access ram char (assuming pointer)
+#define RAM_P(cpu) \
+	cpu->ram[cpu->ram_b]      \
+	.c[(cpu->ram_r & 0xC0) >> 6]\
+	.r[(cpu->ram_r & 0x30) >> 4]\
+	.ch[cpu->ram_r & 0x0F].n
 
 typedef struct {
 	// registers
@@ -135,6 +168,8 @@ typedef struct {
 	w2_t rom[ROM_SZ];
 	// memory
 	ram_bank_t ram[4];
+	// status char memory
+	s_ram_t  s_ram[4];
 	// memory register
 	w2_t ram_r;
 	// memory bank
