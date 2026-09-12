@@ -216,11 +216,24 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 		case NOP: { break; }
 
 		case JCN: {
-			// only alters the right-most 8 bits
-			if (cpu->ir & OPA) {
+			// only alters the OPA
+
+			// first (left-most) bit flips condition (1 flips)
+			// second jumps if acm == 0
+			// third if carry == 1
+			// fourth if test signal is 0 (must implement)
+			bool cond = ((cpu->ir & OPA) & 0b0100 && !cpu->acm) ||
+				((cpu->ir & OPA) & 0b0010 && cpu->carry) ||
+				((cpu->ir & OPA) & 0b0001 && !cpu->test) ? 1 : 0;
+
+			if ((cpu->ir & OPA) & 0b1000) cond = !cond;
+
+			if (cond) {
+				if (((PC_P(cpu)) & 0x0FF) >= 255) PC_P(cpu) += 0x100;
 				PC_P(cpu) &= 0xF00;
 				PC_P(cpu) |= cpu->bus;
 			};
+
 			break;
 		}
 
@@ -263,6 +276,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			PC_P(cpu) = 0;
 			PC_P(cpu) |= cpu->bus;
 			PC_P(cpu) |= (cpu->ir & OPA) << 8;
+			--PC_P(cpu);
 
 			break;
 		}
@@ -286,6 +300,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 
 		case ISZ: {
 			if (++cpu->r[cpu->ir & OPA].n) {
+				if (((PC_P(cpu)) & 0x0FF) >= 255) PC_P(cpu) += 0x100;
 				PC_P(cpu) &= 0xF00;
 				PC_P(cpu) |= cpu->bus;
 			}
@@ -450,6 +465,22 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] &= (cpu->ram_r & 0x1 ? 0xF0 : 0x0F);
 			cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] |=
 				cpu->acm << (cpu->ram_r & 0x1 ? 0 : 4);
+			break;
+		}
+
+		case WMP: {
+			// i'll have a little fun here
+
+			// if set, set OPR
+			cpu->ram_o &= cpu->ram_o_i ? OPA : OPR;
+			cpu->ram_o |= cpu->acm << (cpu->ram_o_i << 2);
+			cpu->ram_o_i = ~cpu->ram_o_i;
+
+			if (!cpu->ram_o_i) {
+				char ch = cpu->ram_o;
+				write(STDOUT_FILENO, &ch, 1);
+			}
+
 			break;
 		}
 

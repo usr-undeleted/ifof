@@ -159,7 +159,16 @@ typedef struct {
 	// stack pointer
 	w2_t sp : 2;
 
-	// add i/o registers here
+	// ram output byte
+	w2_t ram_o : 8;
+	// initially at zero, on little endian style,
+	// if 0, WMP writes to OPA, otherwise, writes to
+	// OPR. WMP toggles this flip-flop
+	w2_t ram_o_i : 1;
+
+	// test pin
+	w2_t test : 1;
+
 } cpu_t;
 
 #endif // EMULATOR_H
