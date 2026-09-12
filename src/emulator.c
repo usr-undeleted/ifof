@@ -47,24 +47,23 @@ static inline void dump_regs(const cpu_t cpu) {
 	);
 }
 
-#define HEX_C_WIDTH 8
-
 // regular hex dump (with tabs at start)
-static inline void hex_dump(const char *arr, const size_t sz) {
-	char chs[HEX_C_WIDTH] = {0};
+static inline void hex_dump(const char *arr, const size_t sz, const size_t w) {
+	char chs[w];
+	memset(chs, '\0', sizeof(chs));
 	uint8_t cnt = 0;
 
 	for (size_t i = 0; i < sz; i++) {
-		chs[i % HEX_C_WIDTH] = arr[i];
+		chs[i % w] = arr[i];
 
-		if (!(i & (HEX_C_WIDTH - 1))) {
+		if (!(i & (w - 1))) {
 			fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
-			cnt = 8;
+			cnt = w;
 		}
 		fprintf(stderr, "%02X ", arr[i] & 0xFF);
 
 		// print the chars
-		if (!((i & (HEX_C_WIDTH - 1)) % 7) && i & (HEX_C_WIDTH - 1)) {
+		if (!((i & (w - 1)) % (w - 1)) && i & (w - 1)) {
 			fputc(' ', stderr);
 			fputc('[', stderr);
 
@@ -125,7 +124,7 @@ static inline void panic(const cpu_t cpu, const char *fmt, ...) {
 	fprintf(stderr, RAM_DUMP_MSG);
 	for (int b = 0; b < 4; b++) {
 		fprintf(stderr, "\t> bank %d:\n", b);
-		hex_dump((char *)cpu.ram[b].m, sizeof(cpu.ram[b].m));
+		hex_dump((char *)cpu.ram[b].m, sizeof(cpu.ram[b].m), 8);
 		if (b < 3) fputc('\n', stderr);
 	}
 
@@ -248,9 +247,10 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 
 		case FIN: {
 			// make address
-			const w3_t a = {
+			w3_t a = {
 				.n = (PC_P(cpu) & 0xF00) | (cpu->r[0].n << 4) | cpu->r[1].n,
 			};
+			if (((PC_P(cpu)) & 0x0FF) >= 255) a.n += 0x100;
 
 			// set pair
 			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
@@ -267,6 +267,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			a |= cpu->r[i + 1].n;  // second item in pair
 
 			PC_P(cpu) &= 0xF00;
+			if (((PC_P(cpu)) & 0x0FF) >= 255) PC_P(cpu) += 0x100;
 			PC_P(cpu) |= a;
 
 			break;
