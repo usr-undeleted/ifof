@@ -52,12 +52,16 @@ static inline void dump_regs(const cpu_t cpu) {
 // regular hex dump (with tabs at start)
 static inline void hex_dump(const char *arr, const size_t sz) {
 	char chs[HEX_C_WIDTH] = {0};
+	uint8_t cnt = 0;
 
 	for (size_t i = 0; i < sz; i++) {
 		chs[i % HEX_C_WIDTH] = arr[i];
 
-		if (!(i & (HEX_C_WIDTH - 1))) fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
-		fprintf(stderr, "%02.2X ", arr[i]);
+		if (!(i & (HEX_C_WIDTH - 1))) {
+			fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
+			cnt = 8;
+		}
+		fprintf(stderr, "%02X ", arr[i] & 0xFF);
 
 		// print the chars
 		if (!((i & (HEX_C_WIDTH - 1)) % 7) && i & (HEX_C_WIDTH - 1)) {
@@ -71,7 +75,21 @@ static inline void hex_dump(const char *arr, const size_t sz) {
 
 			fputc(']', stderr);
 		}
+
+		--cnt;
 	}
+
+	if (cnt) {
+		for (uint8_t i = 0; i < cnt; i++) write(STDERR_FILENO, "    ", 4);
+		fputc('[', stderr);
+
+		for (uint8_t j = 0; j < sizeof(chs) - cnt; j++) {
+			fputc(isprint(chs[j]) ? chs[j] : '.', stderr);
+		}
+
+		fputc(']', stderr);
+	}
+
 	fputc('\n', stderr);
 }
 
