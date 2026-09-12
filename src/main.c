@@ -526,6 +526,14 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case DAA: {
+			w2_t sum = cpu->acm + ((cpu->carry || cpu->acm > 9) ? 6 : 0);
+			cpu->acm = sum & OPA;
+			if (sum & OPR) cpu->carry = 1;
+
+			break;
+		}
+
 		case KBP: {
 			switch (cpu->acm) {
 				case 0b0100: {
