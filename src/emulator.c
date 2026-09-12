@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -46,13 +47,30 @@ static inline void dump_regs(const cpu_t cpu) {
 	);
 }
 
-#define HEX_WIDTH 20
+#define HEX_C_WIDTH 8
 
 // regular hex dump (with tabs at start)
 static inline void hex_dump(const char *arr, const size_t sz) {
+	char chs[HEX_C_WIDTH] = {0};
+
 	for (size_t i = 0; i < sz; i++) {
-		if (!(i & (8 - 1))) fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
+		chs[i % HEX_C_WIDTH] = arr[i];
+
+		if (!(i & (HEX_C_WIDTH - 1))) fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
 		fprintf(stderr, "%02.2X ", arr[i]);
+
+		// print the chars
+		if (!((i & (HEX_C_WIDTH - 1)) % 7) && i & (HEX_C_WIDTH - 1)) {
+			fputc(' ', stderr);
+			fputc('[', stderr);
+
+			for (uint8_t j = 0; j < sizeof(chs); j++) {
+				fputc(isprint(chs[j]) ? chs[j] : '.', stderr);
+			}
+			memset(chs, '\0', sizeof(chs));
+
+			fputc(']', stderr);
+		}
 	}
 	fputc('\n', stderr);
 }
