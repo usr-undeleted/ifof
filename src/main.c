@@ -30,7 +30,7 @@
 
 // how many bytes of RAM is usable by the system
 #define   RAM_BITS 5120
-#define     RAM_SZ RAM_BITS / BYTE_SZ
+#define     RAM_SZ RAM_BITS / BYTE_SZ / 4
 
 // generic halt error message
 #define HALT_MSG "*** halting emulator! ***\n"
@@ -48,6 +48,9 @@
 		"\tprogram counter: %d ; 0x%X ; %b\n" \
 		"\tROM byte at PC: %d ; 0x%02X ; %b\n"\
 		"\taccumulator: %d ; 0x%X ; %04b\n"\
+		"\tcarry bit: %d\n"\
+		"\tflip flop: %d\n"\
+		"\tram bank: %d\n"
 
 // message written before a hexadecimal dump of ram
 #define ROM_DUMP_MSG "-!- rom dump:\n"
@@ -113,13 +116,18 @@ typedef enum {
 
 // a single word
 typedef struct {
-	uint8_t n : 4;
+	w2_t n : 4;
 } w1_t;
 
 // three words
 typedef struct {
-	uint16_t n : 12;
+	w4_t n : 12;
 } w3_t;
+
+// a ram bank
+typedef struct {
+	w2_t m[RAM_SZ];
+} ram_bank_t;
 
 // access the pc (assuming local variable)
 #define PC(cpu) cpu.stack[cpu.sp].n
@@ -135,7 +143,11 @@ typedef struct {
 	// rom memory
 	w2_t rom[ROM_SZ];
 	// memory
-	w2_t ram[RAM_SZ];
+	ram_bank_t ram[4];
+	// memory register
+	w2_t ram_r;
+	// memory bank
+	w2_t ram_b : 3;
 
 	// accumulator
 	w2_t acm : 4;
@@ -191,6 +203,18 @@ inline void dump_regs(const cpu_t cpu) {
 	);
 }
 
+#define HEX_WIDTH 20
+
+// regular hex dump (with tabs at start)
+void hex_dump(const char *arr, const size_t sz);
+inline void hex_dump(const char *arr, const size_t sz) {
+	for (size_t i = 0; i < sz; i++) {
+		if (!(i & (8 - 1))) fprintf(stderr, "%c\t[%04lX]\t", i ? '\n' : '\0', i);
+		fprintf(stderr, "%02.2X ", arr[i]);
+	}
+	fputc('\n', stderr);
+}
+
 // error
 // format is the error message
 void panic(const cpu_t cpu, const char *fmt, ...);
@@ -210,12 +234,23 @@ inline void panic(const cpu_t cpu, const char *fmt, ...) {
 	fprintf(stderr, CPU_DUMP_MSG "\n",
 		PC(cpu), PC(cpu), PC(cpu),
 		cpu.rom[PC(cpu)], cpu.rom[PC(cpu)], cpu.rom[PC(cpu)],
-		cpu.acm, cpu.acm, cpu.acm);
+		cpu.acm, cpu.acm, cpu.acm,
+		cpu.carry,
+		cpu.flag,
+		cpu.ram_b);
 
 	// regs
-	fprintf(stderr,
-		REG_DUMP_MSG);
+	fprintf(stderr, REG_DUMP_MSG);
 	dump_regs(cpu);
+	putchar('\n');
+
+	// ram banks
+	fprintf(stderr, RAM_DUMP_MSG);
+	for (int b = 0; b < 4; b++) {
+		fprintf(stderr, "\t> bank %d:\n", b);
+		hex_dump((char *)cpu.ram[b].m, sizeof(cpu.ram[b].m));
+		if (b < 3) fputc('\n', stderr);
+	}
 
 	va_end(args);
 	exit(1);
@@ -306,8 +341,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		case NOP: { break; }
 
 		case JCN: {
-			if (cpu->flag) break;
-
 			// only alters the right-most 8 bits
 			if (cpu->ir & OPA) {
 				PC_P(cpu) &= 0xF00;
@@ -317,8 +350,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case FIM: {
-			if (cpu->flag) break;
-
 			// set pair
 			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
 			cpu->r[i].n =     (cpu->bus & OPR) >> 4;
@@ -336,7 +367,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			// set pair
 			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
 			cpu->r[i].n =     cpu->rom[a.n] >> 4;
-			cpu->r[i + 1].n = cpu->rom[a.n];
 
 			break;
 		}
@@ -355,9 +385,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case JUN: {
-			// only do things if we have all the data
-			if (cpu->flag) break;
-
 			PC_P(cpu) = 0;
 			PC_P(cpu) |= cpu->bus;
 			PC_P(cpu) |= (cpu->ir & OPA) << 8;
@@ -366,8 +393,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case JMS: {
-			if (cpu->flag) break;
-
 			w3_t a = {
 				.n = (cpu->ir & OPA << 8) | cpu->bus,
 			};
@@ -385,8 +410,6 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case ISZ: {
-			if (cpu->flag) break;
-
 			if (++cpu->r[cpu->ir & OPA].n) {
 				PC_P(cpu) &= 0xF00;
 				PC_P(cpu) |= cpu->bus;
@@ -504,7 +527,51 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case KBP: {
-			if (cpu->acm & (cpu->acm - 1)) cpu->acm = 0xF;
+			switch (cpu->acm) {
+				case 0b0100: {
+					cpu->acm = 0b0011;
+					break;
+				}
+
+				case 0b1000: {
+					cpu->acm = 0b0100;
+					break;
+				}
+
+				default: {
+					cpu->acm = 0xF;
+					break;
+				}
+			}
+			break;
+		}
+
+		case DCL: {
+			cpu->ram_b = cpu->acm & 0x7;
+			break;
+		}
+
+		case SRC: {
+			// get contents of register pair
+			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
+			w2_t a = 0;
+			a |= cpu->r[i].n << 4; // first item in pair
+			a |= cpu->r[i + 1].n;  // second item in pair
+
+			cpu->ram_r = a;
+
+			break;
+		}
+
+		case WRM: {
+			cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] &= (cpu->ram_r & 0x1 ? 0xF0 : 0x0F);
+			cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] |=
+				cpu->acm << (cpu->ram_r & 0x1 ? 0 : 4);
+			break;
+		}
+
+		case RDM: {
+			cpu->acm = cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] >> (cpu->ram_r & 0x1 ? 0 : 4);
 			break;
 		}
 
@@ -513,6 +580,16 @@ inline void execute(cpu_t *cpu, const instruction inst) {
 			panic(*cpu, UNHANDLED_INST_MSG);
 			break;
 		}
+	}
+
+	switch (inst) {
+		// set flip for 16 bit
+		case JCN: case FIM: case JUN: case JMS: case ISZ: {
+			++PC_P(cpu);
+			break;
+		}
+
+		default: break;
 	}
 }
 
@@ -587,7 +664,7 @@ int main (int argc, char *argv[]) {
 			// set flip for 16 bit
 			case JCN: case FIM: case JUN: case JMS: case ISZ: {
 				cpu.flag = 1;
-				break;
+				continue;
 			}
 
 			default: break;
