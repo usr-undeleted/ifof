@@ -194,12 +194,20 @@ typedef struct {
 	// stack pointer
 	w2_t sp : 2;
 
-	// ram output byte
+	// ram output byte (stdout)
 	w2_t ram_o : 8;
 	// initially at zero, on little endian style,
 	// if 0, WMP writes to OPA, otherwise, writes to
 	// OPR. WMP toggles this flip-flop
 	w2_t ram_o_i : 1;
+
+	// 4008 rom chip (stderr)
+	// same stuff as ram_o
+	w2_t rom_c : 8;
+	w2_t rom_c_i : 1;
+
+	// rom i/o
+	w2_t rom_io : 4;
 
 	// test pin
 	w2_t test : 1;

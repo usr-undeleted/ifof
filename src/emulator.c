@@ -479,6 +479,25 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			break;
 		}
 
+		case WRR: {
+			cpu->rom_io = cpu->acm;
+			break;
+		}
+
+		case WPM: {
+			// same logic as WMP, but stderr
+			cpu->rom_c &= cpu->rom_c_i ? OPA : OPR;
+			cpu->rom_c |= cpu->acm << (cpu->rom_c_i << 2);
+			cpu->rom_c_i = ~cpu->rom_c_i;
+
+			if (!cpu->rom_c_i) {
+				char ch = cpu->rom_c;
+				write(STDOUT_FILENO, &ch, 1);
+			}
+
+			break;
+		}
+
 		case WR0: {
 			cpu->s_ram[cpu->ram_b].m[0].n = cpu->acm;
 			break;
@@ -509,6 +528,11 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 
 		case RDM: {
 			cpu->acm = RAM_P(cpu);
+			break;
+		}
+
+		case RDR: {
+			cpu->acm = cpu->rom_io;
 			break;
 		}
 
