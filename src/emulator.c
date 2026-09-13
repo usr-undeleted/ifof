@@ -312,9 +312,10 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case SUB: {
-			w2_t sub = cpu->acm - (cpu->r[cpu->bus & OPA].n + cpu->carry);
-			cpu->carry = (sub > cpu->acm ? 0 : 1);
-			cpu->acm = sub;
+			w2_t res = cpu->acm + (~cpu->r[cpu->bus & OPA].n & 0xF) + (~cpu->carry & 0x1);
+			cpu->carry = res & OPR ? 1 : 0;
+			cpu->acm = res & OPA;
+
 			break;
 		}
 
@@ -458,10 +459,6 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case WRM: {
-			//cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] &= (cpu->ram_r & 0x1 ? 0xF0 : 0x0F);
-			//cpu->ram[cpu->ram_b].m[cpu->ram_r / 2] |=
-			//	cpu->acm << (cpu->ram_r & 0x1 ? 0 : 4);
-
 			RAM_P(cpu) = cpu->acm;
 			break;
 		}
@@ -484,12 +481,62 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 
 		case WR0: {
 			cpu->s_ram[cpu->ram_b].m[0].n = cpu->acm;
+			break;
+		}
+
+		case WR1: {
+			cpu->s_ram[cpu->ram_b].m[1].n = cpu->acm;
+			break;
+		}
+
+		case WR2: {
+			cpu->s_ram[cpu->ram_b].m[2].n = cpu->acm;
+			break;
+		}
+
+		case WR3: {
+			cpu->s_ram[cpu->ram_b].m[3].n = cpu->acm;
+			break;
+		}
+
+		case SBM: {
+			w2_t res = cpu->acm + (~RAM_P(cpu) & 0xF) + (~cpu->carry & 0x1);
+			cpu->carry = res & OPR ? 1 : 0;
+			cpu->acm = res & OPA;
 
 			break;
 		}
 
 		case RDM: {
 			cpu->acm = RAM_P(cpu);
+			break;
+		}
+
+		case ADM: {
+			w2_t sum = cpu->acm + RAM_P(cpu) + cpu->carry;
+			cpu->carry = sum & OPR ? 1 : 0;
+			cpu->acm = sum & OPA;
+
+			break;
+		}
+
+		case RD0: {
+			cpu->acm = cpu->s_ram[cpu->ram_b].m[0].n;
+			break;
+		}
+
+		case RD1: {
+			cpu->acm = cpu->s_ram[cpu->ram_b].m[1].n;
+			break;
+		}
+
+		case RD2: {
+			cpu->acm = cpu->s_ram[cpu->ram_b].m[2].n;
+			break;
+		}
+
+		case RD3: {
+			cpu->acm = cpu->s_ram[cpu->ram_b].m[3].n;
 			break;
 		}
 
