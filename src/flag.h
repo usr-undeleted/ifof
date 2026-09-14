@@ -2,6 +2,7 @@
 #define FLAG_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define F_HELP_STR "help"
 #define F_HELP_CH  'h'
@@ -10,16 +11,30 @@
 #define F_ST_CH  's'
 
 typedef enum {
+	COMP_CHAR,
+	COMP_STR,
+} comp_t;
+
+// an array of these to hold all flags
+// expected to be null terminated (bool ptr)
+typedef struct {
+	char *str;
+	char   ch;
+	bool *bool_v;
+
+} flag_t;
+
+typedef enum {
 	// argument isn't a flag or didn't error
-	NONE = 0,
+	E_NONE = 0,
 	// a char is incorrect
-	CHAR,
+	E_CHAR,
 	// a string is incorrect
-	STRING,
+	E_STRING,
 	// too many roms provided
-	ROM_OVERLOAD,
+	E_ROM_OVERLOAD,
 	// no rom provided
-	NO_ROM,
+	E_NO_ROM,
 
 } which_flag_err;
 
@@ -38,10 +53,7 @@ typedef struct {
 
 } flag_err_t;
 
-extern bool help;
-extern bool sim_time;
-
 // get the flags for an argument
-flag_err_t flag_args(const int argc, const char *argv[]);
+flag_err_t flag_args(const int argc, const char *argv[], const flag_t *flags);
 
 #endif

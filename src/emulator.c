@@ -618,15 +618,37 @@ int main (int argc, char *argv[]) {
 		return 1;
 	}
 
+	bool help     = false;
+	bool sim_time = false;
+
+	flag_t flags[] = {
+		{
+			.str    = "help",
+			.ch     = 'h',
+			.bool_v = &help,
+		},
+
+		{
+			.str    = "sim-time",
+			.ch     = 's',
+			.bool_v = &sim_time,
+		},
+
+		// null term
+		{
+			0,
+		}
+	};
+
 	// process flags
-	flag_err_t fe = flag_args(argc, (const char **)argv);
+	flag_err_t fe = flag_args(argc, (const char **)argv, flags);
 
 	switch (fe.err) {
-		case NONE: {
+		case E_NONE: {
 			break;
 		}
 
-		case CHAR: {
+		case E_CHAR: {
 			fprintf(stderr, "%s: unknown flag '%c' in \"%s\". maybe see --help?\n",
 				basename(argv[0]), *fe.p, argv[fe.i]);
 
@@ -634,7 +656,7 @@ int main (int argc, char *argv[]) {
 			break;
 		}
 
-		case STRING: {
+		case E_STRING: {
 			fprintf(stderr, "%s: unknown flag \"%s\". maybe see --help?\n",
 				basename(argv[0]), fe.p);
 
@@ -652,7 +674,7 @@ int main (int argc, char *argv[]) {
 
 	// these r later cus of help
 	switch (fe.err) {
-		case ROM_OVERLOAD: {
+		case E_ROM_OVERLOAD: {
 			fprintf(stderr, "%s: too many roms provided! maybe see --help?\n",
 				basename(argv[0]));
 
@@ -660,7 +682,7 @@ int main (int argc, char *argv[]) {
 			break;
 		}
 
-		case NO_ROM: {
+		case E_NO_ROM: {
 			fprintf(stderr, "%s: no rom provided! maybe see --help?\n",
 				basename(argv[0]));
 
@@ -747,6 +769,7 @@ int main (int argc, char *argv[]) {
 	return 0;
 
 	simmed:
+	(void)NULL; // ... why is a declaration a c23 extension.
 	struct timespec time = {
 		.tv_nsec = 10800,
 	};
