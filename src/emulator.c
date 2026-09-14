@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 #include <unistd.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -13,8 +14,31 @@
 #include <ctype.h>
 
 #include "emulator.h"
+#include "flag.h"
 
 // https://datasheets.chipdb.org/Intel/MCS-4/datashts/intel-4004.pdf
+
+// help msg
+static inline void f_help(char *invoc) {
+	printf(
+		"%s help menu YAYYY\n"
+		"flags:\n"
+		"\t-h or --help: help menu YAYYY\n"
+		"\t-s or --sim-time: simulate the instruction cycle time from the intel 4004 (10.8 microseconds)\n"
+		"\n"
+		"usage:\n"
+		"\tthis simple lil' thing will emulate how the intel 4004 does from a rom with the same instructions, "
+		"meaning that (hopefully), an original rom shall work on this emulator.\n"
+		"\tto use the emulator, do the invocation, and for the arguments, specify the rom file to be used (only "
+		"one), and optional flags.\n"
+		"\n"
+		"made by undeleted with luv! <3\n"
+		"a good reference for writing roms is \x1b[34;3m%s\x1b[0m, btw!\n"
+		,
+		basename(invoc),
+		"https://datasheets.chipdb.org/Intel/MCS-4/datashts/intel-4004.pdf"
+	);
+}
 
 // print all registers
 static inline void dump_regs(const cpu_t cpu) {
@@ -573,7 +597,12 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 
 	switch (inst) {
 		// set flip for 16 bit
-		case JCN: case FIM: case JUN: case JMS: case ISZ: {
+		case JCN:
+		case FIM:
+		case JUN:
+		// case JMS:
+		case ISZ:
+		{
 			++PC_P(cpu);
 			break;
 		}
@@ -583,58 +612,109 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 }
 
 int main (int argc, char *argv[]) {
-	// what instruction to run
-	instruction inst;
-	// the cpu stuffies
-	cpu_t cpu = {0};
-	cpu.flag = 0;
-
 	if (argc < 2) {
 		fprintf(stderr, "%s: too little arguments! please, specify a ROM :p\n",
 			basename(argv[0]));
 		return 1;
 	}
 
-	if (argc > 2) {
-		fprintf(stderr, "%s: only specify one ROM!\n", basename(argv[0]));
-		return 1;
+	// process flags
+	flag_err_t fe = flag_args(argc, (const char **)argv);
+
+	switch (fe.err) {
+		case NONE: {
+			break;
+		}
+
+		case CHAR: {
+			fprintf(stderr, "%s: unknown flag '%c' in \"%s\". maybe see --help?\n",
+				basename(argv[0]), *fe.p, argv[fe.i]);
+
+			return 1;
+			break;
+		}
+
+		case STRING: {
+			fprintf(stderr, "%s: unknown flag \"%s\". maybe see --help?\n",
+				basename(argv[0]), fe.p);
+
+			return 1;
+			break;
+		}
+
+		default: break;
 	}
+
+	if (help == true) {
+		f_help(argv[0]);
+		return 0;
+	}
+
+	// these r later cus of help
+	switch (fe.err) {
+		case ROM_OVERLOAD: {
+			fprintf(stderr, "%s: too many roms provided! maybe see --help?\n",
+				basename(argv[0]));
+
+			return 1;
+			break;
+		}
+
+		case NO_ROM: {
+			fprintf(stderr, "%s: no rom provided! maybe see --help?\n",
+				basename(argv[0]));
+
+			return 1;
+			break;
+		}
+
+		default: break;
+	}
+
+	// what instruction to run
+	instruction inst;
+	// the cpu stuffies
+	cpu_t cpu = {0};
+	cpu.flag = 0;
 
 	// open the file
 	struct stat st;
-	if (stat(argv[1], &st) != 0) {
+	if (stat(argv[fe.rom_i], &st) != 0) {
 		fprintf(stderr, "%s: failed to stat file \"%s\": %s\n",
-			basename(argv[0]), argv[1], strerror(errno));
+			basename(argv[0]), argv[fe.rom_i], strerror(errno));
 		return 1;
 	};
 
 	// check size
 	if ((size_t)st.st_size > sizeof(cpu.rom)) {
 		fprintf(stderr, "%s: file \"%s\" is too large (%ld bytes) - maximum is %ld bytes :p\n",
-			basename(argv[0]), argv[1], st.st_size, sizeof(cpu.rom));
+			basename(argv[0]), argv[fe.rom_i], st.st_size, sizeof(cpu.rom));
 		return 1;
 	}
 
 	int fd = -1;
-	if ((fd = open(argv[1], O_RDONLY)) < 0) {
+	if ((fd = open(argv[fe.rom_i], O_RDONLY)) < 0) {
 		fprintf(stderr, "%s: failed to open file \"%s\": %s\n",
-			basename(argv[0]), argv[1], strerror(errno));
+			basename(argv[0]), argv[fe.rom_i], strerror(errno));
 		return 1;
 	}
 
 	ssize_t r = 0;
-	fprintf(stderr, "%s: reading ROM \"%s\"...\n", basename(argv[0]), argv[1]);
+	fprintf(stderr, "%s: reading ROM \"%s\"...\n", basename(argv[0]), argv[fe.rom_i]);
 	while ((r = read(fd, cpu.rom, sizeof(cpu.rom)))) {
 		if (r == -1) {
 			fprintf(stderr, "%s: failed to read file \"%s\": %s\n",
-				basename(argv[0]), argv[1], strerror(errno));
+				basename(argv[0]), argv[fe.rom_i], strerror(errno));
 			return 1;
 		}
 	}
 
+	if (sim_time) goto simmed;
+
 	// main loop
 	// one instruction cycle
 	while (1) {
+
 		// fetch for bus
 		cpu.bus = cpu.rom[PC(cpu)];
 
@@ -665,4 +745,36 @@ int main (int argc, char *argv[]) {
 	}
 
 	return 0;
+
+	simmed:
+	struct timespec time = {
+		.tv_nsec = 10800,
+	};
+
+	// same thing but for sim-ed time cus i don't
+	// want an if statement on every loop
+	while (1) {
+		nanosleep(&time, NULL);
+
+		cpu.bus = cpu.rom[PC(cpu)];
+		if (cpu.flag) {
+			cpu.flag = 0;
+			goto exec_s;
+		}
+
+		cpu.ir = cpu.rom[PC(cpu)];
+		inst = decode(&cpu);
+		switch (inst) {
+			// set flip for 16 bit
+			case JCN: case FIM: case JUN: case JMS: case ISZ: {
+				cpu.flag = 1;
+				continue;
+			}
+
+			default: break;
+		}
+
+		exec_s:
+		execute(&cpu, inst);
+	}
 }
