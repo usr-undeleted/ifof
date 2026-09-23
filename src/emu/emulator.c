@@ -14,7 +14,7 @@
 #include <ctype.h>
 
 #include "emulator.h"
-#include "flag.h"
+#include "../flag.h"
 
 // https://datasheets.chipdb.org/Intel/MCS-4/datashts/intel-4004.pdf
 
@@ -25,6 +25,7 @@ static inline void f_help(char *invoc) {
 		"flags:\n"
 		"\t-h or --help: help menu YAYYY\n"
 		"\t-s or --sim-time: simulate the instruction cycle time from the intel 4004 (10.8 microseconds)\n"
+		"\t-m or --no-start-msg: don't show startup msg about reading rom\n"
 		"\n"
 		"usage:\n"
 		"\tthis simple lil' thing will emulate how the intel 4004 does from a rom with the same instructions, "
@@ -247,7 +248,16 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			if ((cpu->ir & OPA) & 0b1000) cond = !cond;
 
 			if (cond) {
-				if (((PC_P(cpu)) & 0x0FF) >= 255) PC_P(cpu) += 0x100;
+				if (((PC_P(cpu)) & 0x0FF) >= 255) {
+					w1_t a = {
+						.n = (PC_P(cpu) & 0xF00) >> 8,
+					};
+
+					a.n += 0xF;
+					PC_P(cpu) &= 0xFF;
+					PC_P(cpu) |= (a.n) << 8;
+				}
+
 				PC_P(cpu) &= 0xF00;
 				PC_P(cpu) |= cpu->bus;
 			};
@@ -269,7 +279,15 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			w3_t a = {
 				.n = (PC_P(cpu) & 0xF00) | (cpu->r[0].n << 4) | cpu->r[1].n,
 			};
-			if (((PC_P(cpu)) & 0x0FF) >= 255) a.n += 0x100;
+			if (((PC_P(cpu)) & 0x0FF) >= 255) {
+				w1_t a = {
+					.n = (PC_P(cpu) & 0xF00) >> 8,
+				};
+
+				a.n += 0xF;
+				PC_P(cpu) &= 0xFF;
+				PC_P(cpu) |= (a.n) << 8;
+			}
 
 			// set pair
 			const w2_t i = ((cpu->ir & OPA) >> 1) * 2;
@@ -286,7 +304,15 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 			a |= cpu->r[i + 1].n;  // second item in pair
 
 			PC_P(cpu) &= 0xF00;
-			if (((PC_P(cpu)) & 0x0FF) >= 255) PC_P(cpu) += 0x100;
+			if (((PC_P(cpu)) & 0x0FF) >= 255) {
+				w1_t a = {
+					.n = (PC_P(cpu) & 0xF00) >> 8,
+				};
+
+				a.n += 0xF;
+				PC_P(cpu) &= 0xFF;
+				PC_P(cpu) |= (a.n) << 8;
+			}
 			PC_P(cpu) |= a;
 
 			break;
@@ -319,8 +345,17 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 		}
 
 		case ISZ: {
-			if (++cpu->r[cpu->ir & OPA].n) {
-				if (((PC_P(cpu)) & 0x0FF) >= 255) PC_P(cpu) += 0x100;
+			if ((++cpu->r[cpu->ir & OPA].n)) {
+				if (((PC_P(cpu)) & 0x0FF) >= 255) {
+					w1_t a = {
+						.n = (PC_P(cpu) & 0xF00) >> 8,
+					};
+
+					a.n += 0xF;
+					PC_P(cpu) &= 0xFF;
+					PC_P(cpu) |= (a.n) << 8;
+				}
+
 				PC_P(cpu) &= 0xF00;
 				PC_P(cpu) |= cpu->bus;
 			}
@@ -597,11 +632,11 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 
 	switch (inst) {
 		// set flip for 16 bit
-		case JCN:
+		// case JCN:
 		case FIM:
 		case JUN:
 		// case JMS:
-		case ISZ:
+		// case ISZ:
 		{
 			++PC_P(cpu);
 			break;
@@ -618,8 +653,9 @@ int main (int argc, char *argv[]) {
 		return 1;
 	}
 
-	bool help     = false;
-	bool sim_time = false;
+	bool help      = false;
+	bool sim_time  = false;
+	bool start_msg = true;
 
 	flag_t flags[] = {
 		{
@@ -633,6 +669,13 @@ int main (int argc, char *argv[]) {
 			.ch     = 's',
 			.bool_v = &sim_time,
 		},
+
+		{
+			.str    = "no-start-msg",
+			.ch     = 'm',
+			.bool_v = &start_msg,
+		},
+
 
 		// null term
 		{
@@ -722,7 +765,7 @@ int main (int argc, char *argv[]) {
 	}
 
 	ssize_t r = 0;
-	fprintf(stderr, "%s: reading ROM \"%s\"...\n", basename(argv[0]), argv[fe.rom_i]);
+	if (start_msg) fprintf(stderr, "%s: reading ROM \"%s\"...\n", basename(argv[0]), argv[fe.rom_i]);
 	while ((r = read(fd, cpu.rom, sizeof(cpu.rom)))) {
 		if (r == -1) {
 			fprintf(stderr, "%s: failed to read file \"%s\": %s\n",

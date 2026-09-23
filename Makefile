@@ -1,19 +1,22 @@
 CC             ="clang"
 BIN_OUTPUT     ="$(pwd)bin/"
-BIN_NAME       ="ifof"
+EMU_BIN_NAME   ="ifof_emu"
+ASM_BIN_NAME   ="ifof_asm"
 SRC            ="$(pwd)src"
-CC_FLAGS       ="-Wextra" "-Wall" "-std=gnu23" "-Isrc/"
-DEBUGGER       =""
+CC_FLAGS       ="-Wextra" "-Wall" "-std=gnu23"
 INVOC_ARGS     =""
 
-.PHONY: compile
+.PHONY: clean
 
-compile:
-	@mkdir -p $(BIN_OUTPUT)
-	@$(CC) -o $(BIN_OUTPUT)$(BIN_NAME) -I $(SRC) $(SRC)/*.c $(CC_FLAGS)
+emulator:
+	@mkdir "-p" $(BIN_OUTPUT)
+	@$(CC) "-o" $(BIN_OUTPUT)$(EMU_BIN_NAME) "-I" $(SRC)/emu $(SRC)/emu/*.c $(CC_FLAGS) "-I$(SRC)" $(SRC)/flag.c
 
-run:
-	@if [ $(DEBUGGER) = "" ]; then $(BIN_OUTPUT)$(BIN_NAME) $(INVOC_ARGS); else $(DEBUGGER) $(BIN_OUTPUT)$(BIN_NAME); fi
+assembler:
+	@mkdir "-p" $(BIN_OUTPUT)
+	@$(CC) "-o" $(BIN_OUTPUT)$(ASM_BIN_NAME) "-I" $(SRC)/asm $(SRC)/asm/*.c $(CC_FLAGS) "-I$(SRC)" $(SRC)/flag.c
+
+all: emulator assembler
 
 clean:
 	@rm -r $(BIN_OUTPUT)

@@ -160,8 +160,6 @@ typedef struct {
 
 typedef struct {
 	// registers
-	// access the right 4 bits (word) with
-	// AND operator (OPR vs OPA)
 	w1_t r[16];
 
 	// rom memory
