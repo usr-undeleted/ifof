@@ -253,7 +253,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 						.n = (PC_P(cpu) & 0xF00) >> 8,
 					};
 
-					a.n += 0xF;
+					a.n += 0x1;
 					PC_P(cpu) &= 0xFF;
 					PC_P(cpu) |= (a.n) << 8;
 				}
@@ -284,7 +284,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 					.n = (PC_P(cpu) & 0xF00) >> 8,
 				};
 
-				a.n += 0xF;
+				a.n += 0x1;
 				PC_P(cpu) &= 0xFF;
 				PC_P(cpu) |= (a.n) << 8;
 			}
@@ -309,7 +309,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 					.n = (PC_P(cpu) & 0xF00) >> 8,
 				};
 
-				a.n += 0xF;
+				a.n += 0x1;
 				PC_P(cpu) &= 0xFF;
 				PC_P(cpu) |= (a.n) << 8;
 			}
@@ -351,7 +351,7 @@ static inline void execute(cpu_t *cpu, const instruction inst) {
 						.n = (PC_P(cpu) & 0xF00) >> 8,
 					};
 
-					a.n += 0xF;
+					a.n += 0x1;
 					PC_P(cpu) &= 0xFF;
 					PC_P(cpu) |= (a.n) << 8;
 				}
@@ -779,7 +779,6 @@ int main (int argc, char *argv[]) {
 	// main loop
 	// one instruction cycle
 	while (1) {
-
 		// fetch for bus
 		cpu.bus = cpu.rom[PC(cpu)];
 
